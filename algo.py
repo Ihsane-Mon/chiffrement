@@ -321,10 +321,19 @@ class ChiffrementAsymetrique:
             justify="left")
         txt_explication.pack(pady=10)
         
+        # Frame pour les boutons
+        frame_boutons = ttk.Frame(frame)
+        frame_boutons.pack(pady=10)
+        
         # Bouton de génération
-        btn_generer = ttk.Button(frame, text="🔄 Générer une nouvelle paire de clés",
+        btn_generer = ttk.Button(frame_boutons, text="🔄 Générer une nouvelle paire",
                                 command=self.generer_cles)
-        btn_generer.pack(pady=20)
+        btn_generer.pack(side="left", padx=5)
+        
+        # Bouton d'importation
+        btn_importer = ttk.Button(frame_boutons, text="📥 Importer une clé publique",
+                                 command=self.importer_cle_publique)
+        btn_importer.pack(side="left", padx=5)
         
         # Affichage des clés
         frame_cles_affich = ttk.LabelFrame(frame, text="Clé Publique (A)")
@@ -334,12 +343,94 @@ class ChiffrementAsymetrique:
                                                       width=80, font=("Courier", 9))
         self.text_cle_pub.pack(fill="both", expand=True)
         
+        # Bouton pour copier la clé publique
+        btn_copier_pub = ttk.Button(frame, text="📋 Copier la clé publique",
+                                   command=self.copier_cle_pub)
+        btn_copier_pub.pack(pady=5)
+        
         frame_cles_priv = ttk.LabelFrame(frame, text="Clé Privée (A⁻¹)")
         frame_cles_priv.pack(fill="both", expand=True, padx=10, pady=10)
         
         self.text_cle_priv = scrolledtext.ScrolledText(frame_cles_priv, height=12, 
                                                        width=80, font=("Courier", 9))
         self.text_cle_priv.pack(fill="both", expand=True)
+        
+        # Bouton pour copier la clé privée
+        btn_copier_priv = ttk.Button(frame, text="📋 Copier la clé privée",
+                                    command=self.copier_cle_priv)
+        btn_copier_priv.pack(pady=5)
+    
+    def importer_cle_publique(self):
+        """Importe une clé publique depuis le texte"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Importer une clé publique")
+        dialog.geometry("600x400")
+        
+        lbl_info = ttk.Label(dialog, 
+            text="Collez votre clé publique (8×8 en hexadécimal, valeurs séparées par des espaces)",
+            wraplength=550)
+        lbl_info.pack(padx=10, pady=10)
+        
+        text_input = scrolledtext.ScrolledText(dialog, height=15, width=70,
+                                              font=("Courier", 9))
+        text_input.pack(padx=10, pady=5, fill="both", expand=True)
+        
+        def valider():
+            try:
+                contenu = text_input.get("1.0", "end-1c")
+                if not contenu:
+                    messagebox.showwarning("Attention", "Veuillez coller une clé !")
+                    return
+                
+                # Parser le hex
+                hex_values = contenu.replace('\n', ' ').split()
+                if len(hex_values) != 64:
+                    messagebox.showerror("Erreur", 
+                        f"Attendu 64 valeurs (8×8), reçu {len(hex_values)}")
+                    return
+                
+                # Convertir en matrice
+                values = [int(h, 16) for h in hex_values]
+                self.cle_publique = np.array(values, dtype=np.uint8).reshape(8, 8)
+                
+                # Calculer la clé privée
+                self.cle_privee = mat_inv(self.cle_publique)
+                
+                # Afficher les clés
+                self.afficher_cles()
+                dialog.destroy()
+                messagebox.showinfo("Succès", "✓ Clé publique importée !")
+                
+            except ValueError as e:
+                messagebox.showerror("Erreur", f"Format invalide : {e}")
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Erreur : {e}")
+        
+        btn_valider = ttk.Button(dialog, text="✓ Importer",
+                                command=valider)
+        btn_valider.pack(pady=10)
+    
+    def copier_cle_pub(self):
+        """Copie la clé publique"""
+        if self.cle_publique is None:
+            messagebox.showwarning("Attention", "Aucune clé publique disponible !")
+            return
+        
+        hex_cle = ' '.join(f'{v:02X}' for v in self.cle_publique.flatten())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(hex_cle)
+        messagebox.showinfo("Succès", "✓ Clé publique copiée !")
+    
+    def copier_cle_priv(self):
+        """Copie la clé privée"""
+        if self.cle_privee is None:
+            messagebox.showwarning("Attention", "Aucune clé privée disponible !")
+            return
+        
+        hex_cle = ' '.join(f'{v:02X}' for v in self.cle_privee.flatten())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(hex_cle)
+        messagebox.showinfo("Succès", "✓ Clé privée copiée !")
     
     def setup_onglet_chiffrement(self, frame):
         """Onglet de chiffrement"""
@@ -492,7 +583,6 @@ class ChiffrementAsymetrique:
             return
         
         try:
-            # Récupérer le texte chiffré et le parser
             texte_chiffre = self.text_dechiff_input.get("1.0", "end-1c")
             if not texte_chiffre:
                 messagebox.showwarning("Attention", "Veuillez entrer un message chiffré !")
@@ -500,30 +590,67 @@ class ChiffrementAsymetrique:
             
             # Parser le hex
             hex_values = ''.join(texte_chiffre.split())
+            
+            # Vérification du format hex
+            if len(hex_values) % 2 != 0:
+                messagebox.showerror("Erreur", 
+                    f"❌ Format hex invalide : {len(hex_values)} caractères (doit être pair)")
+                return
+            
+            if len(hex_values) % 128 != 0:  # 64 octets = 128 caractères hex
+                messagebox.showerror("Erreur", 
+                    f"❌ Taille invalide : {len(hex_values)//2} octets\n"
+                    f"Doit être un multiple de 64 (bloc 8×8)")
+                return
+            
             octets = bytes.fromhex(hex_values)
             
-            # Reconstruire les matrices (8×8 = 64 octets par bloc)
+            # Reconstruire les matrices
             matrices_chiffrees = []
             for i in range(0, len(octets), 64):
                 bloc = octets[i:i+64]
                 m = np.array(list(bloc), dtype=np.uint8).reshape(8, 8)
                 matrices_chiffrees.append(m)
             
-            # Déchiffrer avec la clé privée
+            # Déchiffrer
             matrices_dechiffrees = []
             for m in matrices_chiffrees:
                 m_dechiffree = mat_mul(self.cle_privee, m)
                 matrices_dechiffrees.append(m_dechiffree)
             
-            # Reconvertir en texte
-            message_dechiffre = matrices_vers_texte(matrices_dechiffrees)
+            # Reconvertir en texte avec debug du padding
+            octets_finaux = bytes([int(val) for m in matrices_dechiffrees for val in m.flatten()])
+            nb_padding = octets_finaux[-1]
+            
+            # Debug
+            print(f"DEBUG: Dernier octet = {nb_padding} (0x{nb_padding:02X})")
+            print(f"DEBUG: Taille totale = {len(octets_finaux)} octets")
+            
+            if nb_padding > len(octets_finaux) or nb_padding > 64:
+                messagebox.showerror("Erreur", 
+                    f"❌ Padding invalide : {nb_padding}\n"
+                    f"(Maximum possible : 64)\n\n"
+                    f"Possible causes:\n"
+                    f"• Clé privée incorrecte\n"
+                    f"• Message chiffré corrompu\n"
+                    f"• Format hex invalide")
+                return
+            
+            octets_finaux = octets_finaux[:-nb_padding]
+            message_dechiffre = octets_finaux.decode('utf-8')
             
             self.text_dechiff_output.delete("1.0", "end")
             self.text_dechiff_output.insert("1.0", message_dechiffre)
             
             messagebox.showinfo("Succès", "✓ Message déchiffré avec succès !")
+        except UnicodeDecodeError as e:
+            messagebox.showerror("Erreur", 
+                f"❌ Impossible de décoder en UTF-8\n"
+                f"Probablement : mauvaise clé privée ou données corrompues")
+        except ValueError as e:
+            messagebox.showerror("Erreur", f"Format invalide : {e}")
         except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors du déchiffrement : {e}")
+            messagebox.showerror("Erreur", f"Erreur : {e}")
     
     def afficher_matrices(self):
         """Affiche les matrices utilisées"""
