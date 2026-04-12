@@ -155,18 +155,6 @@ chiffrement_v2.py
 
 ---
 
-## V1 vs V2
-
-| | V1 | V2 |
-|---|---|---|
-| **Corps** | GF(2^8) — 256 elements | GF(p) — p premier 256 bits |
-| **DLP** | GF(2^64) ~ 32 bits — **cassable** | GF(p^4) ~ 2^1024 — ~80 bits |
-| **Generateur** | Matrice circulante (exploitable) | SHA-256(seed) — pseudoaleatoire |
-| **Signature** | t = 256 bits (fuite de k) | t = 640 bits (Sigma-protocole, marge 2^-128) |
-| **Validation** | Aucune | Entrees verifiees (GF(p), inversibilite) |
-| **Interface** | Theme systeme basique | Dark theme moderne |
-
----
 
 ## Limites
 
@@ -183,7 +171,3 @@ chiffrement_v2.py
 > Pour ~112 bits de securite : changer `N = 8` (matrices 8x8, DLP dans GF(p^8) ~ GF(2^2048)).
 
 ---
-
-## Licence
-
-Projet educatif — libre d'utilisation pour l'apprentissage et l'experimentation.
