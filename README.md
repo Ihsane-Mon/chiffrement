@@ -92,7 +92,7 @@ e = SHA256(R || donnees)       s = t + k_sign * e
 ### Lancement
 
 ```bash
-python3 chiffrement_v2.py
+python3 chiffrement.py
 ```
 
 L'application s'ouvre avec une interface dark theme et 3 onglets :
@@ -141,7 +141,7 @@ Tout le code cryptographique est ecrit a la main, sans appel a des bibliotheques
 ## Structure du code
 
 ```
-chiffrement_v2.py
+chiffrement.py
   |
   |-- Partie 1 : Arithmetique GF(p)           gf_add, gf_mul, gf_inv
   |-- Partie 2 : Matrices sur GF(p)           mat_mul, mat_inv, mat_pow
@@ -154,7 +154,6 @@ chiffrement_v2.py
 ```
 
 ---
-
 
 ## Limites
 
@@ -169,5 +168,3 @@ chiffrement_v2.py
 | Pas de forward secrecy | Compromission de k_enc dechiffre tous les messages passes |
 
 > Pour ~112 bits de securite : changer `N = 8` (matrices 8x8, DLP dans GF(p^8) ~ GF(2^2048)).
-
----
