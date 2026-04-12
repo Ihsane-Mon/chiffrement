@@ -1,7 +1,6 @@
 """
 =================================================================
-  CHIFFREMENT ASYMÉTRIQUE HYBRIDE MATRICIEL — Version 2
-  Projet éducatif — corrections de sécurité appliquées
+  CHIFFREMENT ASYMÉTRIQUE HYBRIDE MATRICIEL
 =================================================================
 
 VOCABULAIRE DE BASE (lis ceci avant le code !)
@@ -28,20 +27,14 @@ VOCABULAIRE DE BASE (lis ceci avant le code !)
              C'est le "terrain de jeu" où vivent nos clés publiques.
 
 
-POURQUOI V2 EST PLUS SÛR QUE V1 ?
-───────────────────────────────────
-  V1 utilisait des matrices sur GF(2^8) = corps de 256 éléments.
-  Problème : le DLP dans GL(8, GF(2^8)) se réduit à
-             résoudre le DLP dans GF(2^64).
-             GF(2^64) est PETIT → attaque en ~2^32 opérations → PC standard !
-
-  V2 utilise des matrices sur GF(p) avec p premier de 256 bits.
-  Solution : le DLP dans GL(4, GF(p)) se réduit à
-             résoudre le DLP dans GF(p^4) ≈ GF(2^1024).
-             Les meilleurs algorithmes (NFS) sont sous-exponentiels :
-             un corps de 1024 bits ≈ ~80 bits de sécurité classique.
-             (comparable à RSA-1024 — suffisant pour un projet éducatif,
-              insuffisant pour la production ; il faudrait N=8 ou plus)
+SÉCURITÉ
+────────
+  Le système utilise des matrices sur GF(p) avec p premier de 256 bits.
+  Le DLP dans GL(4, GF(p)) se réduit à résoudre le DLP dans
+  GF(p^4) ≈ GF(2^1024). Les meilleurs algorithmes (NFS) sont
+  sous-exponentiels : un corps de 1024 bits ≈ ~80 bits de sécurité
+  classique (comparable à RSA-1024 — suffisant pour un projet éducatif,
+  insuffisant pour la production ; il faudrait N=8 ou plus).
 
 
 ARCHITECTURE DU SYSTÈME
@@ -49,14 +42,6 @@ ARCHITECTURE DU SYSTÈME
   [1] El-Gamal matriciel  →  échange de clés (qui déchiffre quoi)
   [2] HMAC-CTR            →  chiffrement réel du texte (rapide)
   [3] Schnorr matriciel   →  signature (qui a signé le message)
-
-
-CORRECTION PRINCIPALE (bug v1 → fix v2)
-─────────────────────────────────────────
-  Bug v1  : s = t + k × e   avec t de 256 bits → fuite d'info sur k
-  Fix v2  : t passe à 640 bits (256+256+128) → masquage statistique de k
-             (technique standard des Σ-protocoles quand l'ordre du groupe
-              est inconnu : le "bruit" t noie l'info sur k avec marge 2^-128)
 
 =================================================================
 """
@@ -79,7 +64,6 @@ from tkinter import ttk, scrolledtext, messagebox, filedialog
 # │                                                                  │
 # │  P_FIELD est un nombre PREMIER de 256 bits.                     │
 # │  Toutes les entrées de nos matrices sont dans {0 .. P_FIELD-1}. │
-# │  C'est l'analogue de GF(2^8) dans v1, mais BEAUCOUP plus grand.│
 # │                                                                  │
 # │  Ce nombre est le premier du protocole secp256k1 —              │
 # │  vérifié et utilisé dans Bitcoin. Sa primalité est certaine.    │
@@ -324,13 +308,8 @@ def mat_depuis_liste(flat: list) -> list:
 #  RÔLE : toutes les clés publiques sont de la forme G^k.
 #         G est la même pour tous les utilisateurs du système.
 #
-#  CORRECTION V2 : on N'utilise PAS une matrice circulante
-#  (comme dans v1 avec G_GEN hardcodée).
-#  Les matrices circulantes ont une structure algébrique particulière
-#  qui les rend plus vulnérables.
-#
-#  À LA PLACE : on génère G depuis un hash SHA-256 d'une chaîne
-#  publique et auditable → structure pseudoaléatoire, pas de backdoor.
+#  On génère G depuis un hash SHA-256 d'une chaîne publique et
+#  auditable → structure pseudoaléatoire, pas de backdoor.
 #
 #  PRINCIPE "NOTHING UP MY SLEEVE" :
 #  Si on choisissait G "à la main", on pourrait l'avoir choisie
@@ -385,7 +364,7 @@ def generer_G_depuis_seed(seed: bytes) -> list:
 
 
 # Seed public et vérifiable — changer ce texte change G complètement
-SEED_PUBLIC = b"chiffrement-matriciel-v2-gf-prime-educatif-2026"
+SEED_PUBLIC = b"chiffrement-matriciel-gf-prime-educatif-2026"
 
 # Générer G_GEN une seule fois au démarrage du programme
 # (peut prendre quelques secondes la première fois)
@@ -420,7 +399,7 @@ def kdf(secret: bytes, label: bytes) -> bytes:
       Permet de dériver des clés DIFFÉRENTES pour des usages différents,
       depuis le MÊME secret, sans qu'elles soient liées mathématiquement.
 
-      kdf(S, "chiffrement-v2")    ≠   kdf(S, "authentification-v2")
+      kdf(S, "chiffrement")    ≠   kdf(S, "authentification")
 
       Sans ça, un attaquant connaissant key_mac pourrait déduire key_enc.
 
@@ -561,7 +540,7 @@ def generer_paire_cles() -> dict:
 #  │  7. t = aléatoire                                               │
 #  │     R = G^t                                                     │
 #  │  8. e = SHA256(R || données) mod Q                              │
-#  │  9. s = (t + k_sign × e) mod Q    ← CORRECTION V2 !           │
+#  │  9. s = t + k_sign × e                                        │
 #  │                                                                 │
 #  │  Envoie : {C_pub, nonce, ct, mac, R, s}                       │
 #  └─────────────────────────────────────────────────────────────────┘
@@ -600,8 +579,8 @@ def chiffrer(message: str, K_enc_dest: list, k_sign_emit: int) -> dict:
     # On dérive DEUX clés indépendantes depuis S :
     # une pour chiffrer (key_enc) et une pour authentifier (key_mac).
     # Grâce au label différent, elles sont mathématiquement indépendantes.
-    key_enc = kdf(S_bytes, b'chiffrement-v2')
-    key_mac = kdf(S_bytes, b'authentification-v2')
+    key_enc = kdf(S_bytes, b'chiffrement')
+    key_mac = kdf(S_bytes, b'authentification')
 
     # ── ÉTAPE 5 : Chiffrement CTR ────────────────────────────────
     # nonce = 16 octets aléatoires, unique à chaque chiffrement
@@ -627,16 +606,12 @@ def chiffrer(message: str, K_enc_dest: list, k_sign_emit: int) -> dict:
     #   t = aléatoire          (nonce de signature, usage unique)
     #   R = G^t                (engagement : "je m'engage sur G^t")
     #   e = hash(R || données) (challenge : le hash détermine e → non forgeable)
-    #   s = (t + k × e) mod Q (réponse : combine le secret et le challenge)
+    #   s = (t + k × e) (réponse : combine le secret et le challenge)
     #
     # Bob vérifie : G^s == R × K_sign^e
     # Preuve : G^s = G^(t+k×e) = G^t × G^(k×e) = R × (G^k)^e = R × K^e ✓
     #
     # SANS CONNAÎTRE t ni k, il est impossible de forger (R, s) qui passe.
-    #
-    # CORRECTION V2 : t passe de 256 à 640 bits (Σ-protocole)
-    # En v1, t était de 256 bits → s = t + k×e fuitait k (~384 bits).
-    # Avec t de 640 bits, k×e (~512 bits) est noyé statistiquement (marge 2^-128).
 
     signed_payload = protected + mac  # on signe tout le paquet
 
@@ -711,8 +686,8 @@ def dechiffrer(paquet: dict, k_enc_dest: int, K_sign_emit: list) -> tuple:
     # C'est le même S qu'Alice a calculé : G^(k_dest × r) = G^(r × k_dest) ✓
     S       = mat_pow(C_pub, k_enc_dest)
     S_bytes = mat_vers_bytes(S)
-    key_enc = kdf(S_bytes, b'chiffrement-v2')
-    key_mac = kdf(S_bytes, b'authentification-v2')
+    key_enc = kdf(S_bytes, b'chiffrement')
+    key_mac = kdf(S_bytes, b'authentification')
 
     # ── Vérification MAC (intégrité) ────────────────────────────
     # On recalcule le MAC attendu et on le compare avec celui reçu.
@@ -762,7 +737,7 @@ def cles_vers_json(cles: dict) -> tuple:
     """
     # Clé publique : les matrices aplaties en listes d'entiers
     pub = json.dumps({
-        'version': 2,
+        'version': 1,
         'K_enc':  [cles['K_enc'][i][j]
                    for i in range(N) for j in range(N)],
         'K_sign': [cles['K_sign'][i][j]
@@ -771,7 +746,7 @@ def cles_vers_json(cles: dict) -> tuple:
 
     # Clé privée : deux entiers (GARDER ABSOLUMENT SECRET)
     priv = json.dumps({
-        'version': 2,
+        'version': 1,
         'k_enc':  cles['k_enc'],
         'k_sign': cles['k_sign'],
     }, indent=2)
@@ -802,7 +777,7 @@ def json_vers_cle_priv(js: str) -> tuple:
 def paquet_vers_json(p: dict) -> str:
     """Sérialise un paquet chiffré en JSON."""
     return json.dumps({
-        'version': 2,
+        'version': 1,
         'c_pub': [p['c_pub'][i][j] for i in range(N) for j in range(N)],
         'nonce': p['nonce'],
         'ct':    p['ct'],
@@ -825,305 +800,304 @@ def json_vers_paquet(js: str) -> dict:
     }
 
 
+
 # ═══════════════════════════════════════════════════════════════════
-#  PARTIE 8 : INTERFACE GRAPHIQUE (tkinter)
+#  PARTIE 8 : INTERFACE GRAPHIQUE — Dark Theme
 # ═══════════════════════════════════════════════════════════════════
 
 class App:
-    def __init__(self, root: tk.Tk):
+    """Interface moderne (dark theme) pour le chiffrement matriciel."""
+
+    # ── Palette ──────────────────────────────────────────────────
+    BG         = '#0d1117'
+    SURFACE    = '#161b22'
+    SURFACE_HL = '#1f2937'
+    ACCENT     = '#6366f1'
+    ACCENT_HL  = '#818cf8'
+    GREEN      = '#3fb950'
+    RED        = '#f85149'
+    ORANGE     = '#d29922'
+    TXT        = '#e6edf3'
+    TXT_DIM    = '#7d8590'
+    BORDER     = '#30363d'
+    INPUT_BG   = '#0d1117'
+
+    # ── Polices ──────────────────────────────────────────────────
+    FNT_TITLE = ('Helvetica Neue', 18, 'bold')
+    FNT_HEAD  = ('Helvetica Neue', 12, 'bold')
+    FNT_BODY  = ('Helvetica Neue', 11)
+    FNT_SMALL = ('Helvetica Neue', 10)
+    FNT_MONO  = ('Menlo', 10)
+    FNT_BTN   = ('Helvetica Neue', 11, 'bold')
+
+    def __init__(self, root):
         self.root = root
-        self.root.title(
-            "Chiffrement Asymétrique Matriciel v2 — El-Gamal + Schnorr sur GL(4, GF(p))"
-        )
-        self.root.geometry("1150x820")
-        self.mes_cles = None  # stocke les clés de l'utilisateur courant
-        self._construire_interface()
+        self.root.title("Chiffrement Matriciel")
+        self.root.geometry("1120x860")
+        self.root.configure(bg=self.BG)
+        self.root.minsize(920, 680)
+        self.mes_cles = None
+        self._setup_styles()
+        self._build()
 
-    # ──────────────────────────────────────────────────────────────
-    #  Construction de l'interface à onglets
-    # ──────────────────────────────────────────────────────────────
+    # ── Styles ttk ───────────────────────────────────────────────
 
-    def _construire_interface(self):
+    def _setup_styles(self):
+        s = ttk.Style()
+        s.theme_use('clam')
+        s.configure('.', background=self.BG, foreground=self.TXT, borderwidth=0)
+        s.configure('TNotebook',
+                     background=self.BG, borderwidth=0, tabmargins=[4, 8, 4, 0])
+        s.configure('TNotebook.Tab',
+                     background=self.SURFACE, foreground=self.TXT_DIM,
+                     padding=[28, 12], font=self.FNT_BTN)
+        s.map('TNotebook.Tab',
+              background=[('selected', self.ACCENT)],
+              foreground=[('selected', '#ffffff')])
+        s.configure('Vertical.TScrollbar',
+                     background=self.SURFACE, troughcolor=self.BG,
+                     borderwidth=0, arrowsize=0)
+        s.map('Vertical.TScrollbar', background=[('active', self.BORDER)])
+
+    # ── Helpers UI ───────────────────────────────────────────────
+
+    def _text(self, parent, h=6):
+        """Cree un champ texte theme."""
+        t = scrolledtext.ScrolledText(
+            parent, height=h,
+            bg=self.INPUT_BG, fg=self.TXT,
+            insertbackground=self.ACCENT,
+            selectbackground=self.ACCENT, selectforeground='#fff',
+            font=self.FNT_MONO, relief='flat', borderwidth=8,
+            highlightthickness=1, highlightbackground=self.BORDER,
+            highlightcolor=self.ACCENT, wrap='word')
+        return t
+
+    def _btn(self, parent, text, cmd, accent=False):
+        """Cree un bouton avec hover."""
+        bg = self.ACCENT if accent else self.SURFACE
+        hv = self.ACCENT_HL if accent else self.SURFACE_HL
+        fg = '#ffffff' if accent else self.TXT
+        b = tk.Button(
+            parent, text=text, command=cmd,
+            bg=bg, fg=fg, activebackground=hv, activeforeground='#fff',
+            font=self.FNT_BTN, relief='flat', cursor='hand2',
+            padx=20, pady=9, borderwidth=0, highlightthickness=0)
+        b.bind('<Enter>', lambda e, _b=b, _c=hv: _b.configure(bg=_c))
+        b.bind('<Leave>', lambda e, _b=b, _c=bg: _b.configure(bg=_c))
+        return b
+
+    def _btn_sm(self, parent, text, cmd):
+        """Cree un petit bouton secondaire."""
+        bg = self.SURFACE_HL
+        b = tk.Button(
+            parent, text=text, command=cmd,
+            bg=bg, fg=self.TXT_DIM,
+            activebackground=self.BORDER, activeforeground=self.TXT,
+            font=self.FNT_SMALL, relief='flat', cursor='hand2',
+            padx=12, pady=5, borderwidth=0, highlightthickness=0)
+        b.bind('<Enter>', lambda e, _b=b: _b.configure(bg=self.BORDER, fg=self.TXT))
+        b.bind('<Leave>', lambda e, _b=b: _b.configure(bg=bg, fg=self.TXT_DIM))
+        return b
+
+    def _card(self, parent, title, warn=False):
+        """Cree une carte avec titre. Retourne (outer, inner)."""
+        outer = tk.Frame(parent, bg=self.BG)
+        fg = self.ORANGE if warn else self.ACCENT
+        tk.Label(outer, text=title, bg=self.BG, fg=fg,
+                 font=self.FNT_HEAD, anchor='w').pack(fill='x', padx=4, pady=(0, 6))
+        inner = tk.Frame(outer, bg=self.SURFACE,
+                         highlightthickness=1, highlightbackground=self.BORDER)
+        inner.pack(fill='both', expand=True)
+        return outer, inner
+
+    def _set_text(self, widget, texte):
+        widget.config(state='normal')
+        widget.delete('1.0', 'end')
+        widget.insert('1.0', texte)
+
+    # ── Construction principale ──────────────────────────────────
+
+    def _build(self):
+        # ── Header ──
+        hdr = tk.Frame(self.root, bg=self.BG)
+        hdr.pack(fill='x', padx=28, pady=(20, 6))
+        tk.Label(hdr, text="Chiffrement Matriciel",
+                 bg=self.BG, fg=self.TXT,
+                 font=self.FNT_TITLE).pack(side='left')
+        tk.Label(hdr, text="El-Gamal + Schnorr  |  GL(4, GF(p))",
+                 bg=self.BG, fg=self.TXT_DIM,
+                 font=self.FNT_SMALL).pack(side='left', padx=(16, 0), pady=(6, 0))
+
+        # ── Separateur ──
+        tk.Frame(self.root, bg=self.BORDER, height=1).pack(
+            fill='x', padx=28, pady=(12, 0))
+
+        # ── Onglets ──
         nb = ttk.Notebook(self.root)
-        nb.pack(fill='both', expand=True, padx=8, pady=8)
+        nb.pack(fill='both', expand=True, padx=24, pady=(10, 24))
 
-        onglets = [
-            ("Mes Clés",   self._onglet_cles),
-            ("Chiffrer",   self._onglet_chiffrer),
-            ("Déchiffrer", self._onglet_dechiffrer),
-            ("À propos",   self._onglet_apropos),
-        ]
-        for titre, fn in onglets:
-            f = ttk.Frame(nb)
+        for titre, builder in [
+            ("   Mes Cles   ",   self._tab_cles),
+            ("   Chiffrer   ",   self._tab_chiffrer),
+            ("   Dechiffrer   ", self._tab_dechiffrer),
+        ]:
+            f = tk.Frame(nb, bg=self.BG)
             nb.add(f, text=titre)
-            fn(f)
+            builder(f)
 
-    # ──────────────────────────────────────────────────────────────
-    #  Onglet 1 : Mes Clés
-    # ──────────────────────────────────────────────────────────────
+    # ── Tab 1 : Mes Cles ────────────────────────────────────────
 
-    def _onglet_cles(self, parent):
-        ttk.Label(
-            parent,
-            text="Mes Clés — Identité Locale",
-            font=('Arial', 13, 'bold')
-        ).pack(pady=8)
+    def _tab_cles(self, parent):
+        pad = tk.Frame(parent, bg=self.BG)
+        pad.pack(fill='both', expand=True, padx=18, pady=14)
 
-        ttk.Label(
-            parent,
-            text=(
-                "Clé privée  =  entier k (256 bits — JAMAIS partager)\n"
-                "Clé publique = G^k ∈ GL(4, GF(p))  — matrice 4×4, partageable librement\n"
-                "Sécurité v2 : DLP dans GL(4, GF(p)) réduit à GF(p^4) ≈ 2^1024 — ~512 bits effectifs"
-            ),
-            foreground='#555',
-            justify='left',
-        ).pack(anchor='w', padx=14, pady=2)
+        # Boutons
+        bf = tk.Frame(pad, bg=self.BG)
+        bf.pack(fill='x', pady=(0, 16))
+        self._btn(bf, "Generer une paire de cles",
+                  self._generer_cles, accent=True).pack(side='left', padx=(0, 10))
+        self._btn(bf, "Charger depuis fichier",
+                  self._charger_mes_cles).pack(side='left')
 
-        bf = ttk.Frame(parent)
-        bf.pack(pady=8)
-        ttk.Button(
-            bf,
-            text="Générer une nouvelle paire de clés",
-            command=self._generer_cles
-        ).pack(side='left', padx=4)
-        ttk.Button(
-            bf,
-            text="Charger mes clés (fichier privé JSON)",
-            command=self._charger_mes_cles
-        ).pack(side='left', padx=4)
+        # Cle publique
+        c_pub, i_pub = self._card(pad, "Cle publique  —  a partager librement")
+        c_pub.pack(fill='both', expand=True, pady=(0, 12))
+        self.txt_pub = self._text(i_pub, h=7)
+        self.txt_pub.pack(fill='both', expand=True, padx=8, pady=8)
+        row_pub = tk.Frame(i_pub, bg=self.SURFACE)
+        row_pub.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(row_pub, "Copier",
+                     lambda: self._copier(self.txt_pub)).pack(side='left', padx=(0, 6))
+        self._btn_sm(row_pub, "Sauvegarder .json",
+                     self._sauvegarder_pub).pack(side='left')
 
-        lf1 = ttk.LabelFrame(parent, text="Clé Publique — partagez ce JSON avec vos interlocuteurs")
-        lf1.pack(fill='both', expand=True, padx=10, pady=4)
-        self.txt_pub = scrolledtext.ScrolledText(lf1, height=8, font=('Courier', 8))
-        self.txt_pub.pack(fill='both', expand=True, padx=4, pady=4)
+        # Cle privee
+        c_priv, i_priv = self._card(
+            pad, "Cle privee  —  NE JAMAIS PARTAGER", warn=True)
+        c_priv.pack(fill='both', expand=True)
+        self.txt_priv = self._text(i_priv, h=4)
+        self.txt_priv.pack(fill='both', expand=True, padx=8, pady=8)
+        row_priv = tk.Frame(i_priv, bg=self.SURFACE)
+        row_priv.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(row_priv, "Sauvegarder .json",
+                     self._sauvegarder_priv).pack(side='left')
 
-        bf2 = ttk.Frame(parent)
-        bf2.pack(pady=2)
-        ttk.Button(bf2, text="Copier clé publique",
-                   command=lambda: self._copier(self.txt_pub)).pack(side='left', padx=4)
-        ttk.Button(bf2, text="Sauvegarder clé publique (.json)",
-                   command=self._sauvegarder_pub).pack(side='left', padx=4)
+    # ── Tab 2 : Chiffrer ────────────────────────────────────────
 
-        lf2 = ttk.LabelFrame(parent, text="Clé Privée  ⚠  NE JAMAIS PARTAGER — NE JAMAIS ENVOYER")
-        lf2.pack(fill='both', expand=True, padx=10, pady=4)
-        self.txt_priv = scrolledtext.ScrolledText(lf2, height=4, font=('Courier', 8))
-        self.txt_priv.pack(fill='both', expand=True, padx=4, pady=4)
+    def _tab_chiffrer(self, parent):
+        pad = tk.Frame(parent, bg=self.BG)
+        pad.pack(fill='both', expand=True, padx=18, pady=14)
 
-        ttk.Button(
-            parent,
-            text="Sauvegarder clé privée (stockez-la en lieu sûr)",
-            command=self._sauvegarder_priv
-        ).pack(pady=4)
+        # Cle publique du destinataire
+        c1, i1 = self._card(pad, "Cle publique du destinataire")
+        c1.pack(fill='x', pady=(0, 12))
+        self.txt_dest_pub = self._text(i1, h=5)
+        self.txt_dest_pub.pack(fill='both', expand=True, padx=8, pady=8)
+        r1 = tk.Frame(i1, bg=self.SURFACE)
+        r1.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(r1, "Charger .json",
+                     lambda: self._charger_dans(self.txt_dest_pub)).pack(side='right')
 
-    # ──────────────────────────────────────────────────────────────
-    #  Onglet 2 : Chiffrer
-    # ──────────────────────────────────────────────────────────────
+        # Message en clair
+        c2, i2 = self._card(pad, "Message en clair")
+        c2.pack(fill='x', pady=(0, 12))
+        self.txt_clair = self._text(i2, h=4)
+        self.txt_clair.pack(fill='both', expand=True, padx=8, pady=8)
 
-    def _onglet_chiffrer(self, parent):
-        ttk.Label(
-            parent,
-            text="Chiffrer un message pour quelqu'un",
-            font=('Arial', 13, 'bold')
-        ).pack(pady=8)
+        # Bouton principal
+        self._btn(pad, "Chiffrer + Signer",
+                  self._chiffrer, accent=True).pack(pady=(0, 12))
 
-        lf1 = ttk.LabelFrame(parent, text="Clé Publique du DESTINATAIRE (collez ou importez son fichier)")
-        lf1.pack(fill='x', padx=10, pady=4)
-        self.txt_dest_pub = scrolledtext.ScrolledText(lf1, height=6, font=('Courier', 8))
-        self.txt_dest_pub.pack(fill='x', padx=4, pady=4)
-        ttk.Button(lf1, text="Charger depuis fichier",
-                   command=lambda: self._charger_dans(self.txt_dest_pub)
-                   ).pack(anchor='e', padx=4, pady=2)
+        # Resultat
+        c3, i3 = self._card(pad, "Message chiffre (JSON)")
+        c3.pack(fill='both', expand=True)
+        self.txt_chiffre = self._text(i3, h=8)
+        self.txt_chiffre.pack(fill='both', expand=True, padx=8, pady=8)
+        r3 = tk.Frame(i3, bg=self.SURFACE)
+        r3.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(r3, "Copier",
+                     lambda: self._copier(self.txt_chiffre)).pack(side='left', padx=(0, 6))
+        self._btn_sm(r3, "Sauvegarder",
+                     lambda: self._sauvegarder_texte(self.txt_chiffre)).pack(side='left')
 
-        lf2 = ttk.LabelFrame(parent, text="Message en clair")
-        lf2.pack(fill='x', padx=10, pady=4)
-        self.txt_clair = scrolledtext.ScrolledText(lf2, height=5)
-        self.txt_clair.pack(fill='x', padx=4, pady=4)
+    # ── Tab 3 : Dechiffrer ──────────────────────────────────────
 
-        ttk.Button(
-            parent,
-            text="Chiffrer + Signer",
-            command=self._chiffrer
-        ).pack(pady=8)
+    def _tab_dechiffrer(self, parent):
+        pad = tk.Frame(parent, bg=self.BG)
+        pad.pack(fill='both', expand=True, padx=18, pady=14)
 
-        lf3 = ttk.LabelFrame(parent, text="Message chiffré (JSON) — envoyez ce bloc au destinataire")
-        lf3.pack(fill='both', expand=True, padx=10, pady=4)
-        self.txt_chiffre = scrolledtext.ScrolledText(lf3, height=10, font=('Courier', 8))
-        self.txt_chiffre.pack(fill='both', expand=True, padx=4, pady=4)
+        # Cle privee
+        c0, i0 = self._card(pad, "Votre cle privee", warn=True)
+        c0.pack(fill='x', pady=(0, 10))
+        self.txt_cle_priv_dec = self._text(i0, h=3)
+        self.txt_cle_priv_dec.pack(fill='both', expand=True, padx=8, pady=8)
+        r0 = tk.Frame(i0, bg=self.SURFACE)
+        r0.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(r0, "Charger .json",
+                     lambda: self._charger_dans(self.txt_cle_priv_dec)).pack(side='right')
 
-        bf = ttk.Frame(parent)
-        bf.pack(pady=4)
-        ttk.Button(bf, text="Copier",
-                   command=lambda: self._copier(self.txt_chiffre)).pack(side='left', padx=4)
-        ttk.Button(bf, text="Sauvegarder",
-                   command=lambda: self._sauvegarder_texte(self.txt_chiffre)).pack(side='left', padx=4)
+        # Cle publique emetteur
+        c1, i1 = self._card(pad, "Cle publique de l'emetteur")
+        c1.pack(fill='x', pady=(0, 10))
+        self.txt_emit_pub = self._text(i1, h=3)
+        self.txt_emit_pub.pack(fill='both', expand=True, padx=8, pady=8)
+        r1 = tk.Frame(i1, bg=self.SURFACE)
+        r1.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(r1, "Charger .json",
+                     lambda: self._charger_dans(self.txt_emit_pub)).pack(side='right')
 
-    # ──────────────────────────────────────────────────────────────
-    #  Onglet 3 : Déchiffrer
-    # ──────────────────────────────────────────────────────────────
+        # Message chiffre recu
+        c2, i2 = self._card(pad, "Message chiffre recu (JSON)")
+        c2.pack(fill='x', pady=(0, 10))
+        self.txt_recu = self._text(i2, h=3)
+        self.txt_recu.pack(fill='both', expand=True, padx=8, pady=8)
+        r2 = tk.Frame(i2, bg=self.SURFACE)
+        r2.pack(fill='x', padx=8, pady=(0, 8))
+        self._btn_sm(r2, "Charger .json",
+                     lambda: self._charger_dans(self.txt_recu)).pack(side='right')
 
-    def _onglet_dechiffrer(self, parent):
-        ttk.Label(
-            parent,
-            text="Déchiffrer un message reçu",
-            font=('Arial', 13, 'bold')
-        ).pack(pady=8)
+        # Bouton principal
+        self._btn(pad, "Dechiffrer + Verifier la Signature",
+                  self._dechiffrer, accent=True).pack(pady=(2, 10))
 
-        # ── Zone 1 : Clé privée du destinataire (OBLIGATOIRE) ────
-        lf0 = ttk.LabelFrame(
-            parent,
-            text="Votre Clé Privée  ⚠  (fichier JSON privé — ne jamais partager)"
-        )
-        lf0.pack(fill='x', padx=10, pady=4)
+        # Status signature
+        self.lbl_sig = tk.Label(pad, text="", bg=self.BG, font=self.FNT_HEAD)
+        self.lbl_sig.pack(pady=(0, 10))
 
-        ttk.Label(
-            lf0,
-            text="Collez votre clé privée JSON ici, ou chargez le fichier :",
-            foreground='#c00'
-        ).pack(anchor='w', padx=6, pady=2)
+        # Message dechiffre
+        c3, i3 = self._card(pad, "Message dechiffre")
+        c3.pack(fill='both', expand=True)
+        self.txt_dechiffre = self._text(i3, h=5)
+        self.txt_dechiffre.pack(fill='both', expand=True, padx=8, pady=8)
 
-        self.txt_cle_priv_dec = scrolledtext.ScrolledText(
-            lf0, height=4, font=('Courier', 8)
-        )
-        self.txt_cle_priv_dec.pack(fill='x', padx=4, pady=4)
-
-        ttk.Button(
-            lf0,
-            text="Charger ma clé privée depuis fichier",
-            command=lambda: self._charger_dans(self.txt_cle_priv_dec)
-        ).pack(anchor='e', padx=4, pady=2)
-
-        # ── Zone 2 : Clé publique de l'émetteur ─────────────────
-        lf1 = ttk.LabelFrame(parent, text="Clé Publique de L'ÉMETTEUR (pour vérifier sa signature)")
-        lf1.pack(fill='x', padx=10, pady=4)
-        self.txt_emit_pub = scrolledtext.ScrolledText(lf1, height=4, font=('Courier', 8))
-        self.txt_emit_pub.pack(fill='x', padx=4, pady=4)
-        ttk.Button(lf1, text="Charger depuis fichier",
-                   command=lambda: self._charger_dans(self.txt_emit_pub)
-                   ).pack(anchor='e', padx=4, pady=2)
-
-        # ── Zone 3 : Message chiffré reçu ───────────────────────
-        lf2 = ttk.LabelFrame(parent, text="Message chiffré reçu (JSON)")
-        lf2.pack(fill='x', padx=10, pady=4)
-        self.txt_recu = scrolledtext.ScrolledText(lf2, height=4, font=('Courier', 8))
-        self.txt_recu.pack(fill='x', padx=4, pady=4)
-        ttk.Button(lf2, text="Charger depuis fichier",
-                   command=lambda: self._charger_dans(self.txt_recu)
-                   ).pack(anchor='e', padx=4, pady=2)
-
-        ttk.Button(
-            parent,
-            text="Déchiffrer + Vérifier Signature",
-            command=self._dechiffrer
-        ).pack(pady=8)
-
-        self.lbl_sig = ttk.Label(parent, text="", font=('Arial', 11, 'bold'))
-        self.lbl_sig.pack()
-
-        lf3 = ttk.LabelFrame(parent, text="Message déchiffré")
-        lf3.pack(fill='both', expand=True, padx=10, pady=4)
-        self.txt_dechiffre = scrolledtext.ScrolledText(lf3, height=6)
-        self.txt_dechiffre.pack(fill='both', expand=True, padx=4, pady=4)
-
-    # ──────────────────────────────────────────────────────────────
-    #  Onglet 4 : À propos
-    # ──────────────────────────────────────────────────────────────
-
-    def _onglet_apropos(self, parent):
-        info = f"""
-CHIFFREMENT ASYMÉTRIQUE HYBRIDE MATRICIEL — Version 2
-======================================================
-
-CORRECTIONS PAR RAPPORT À V1
-──────────────────────────────
-  V1 : Corps GF(2^8) → 256 éléments → DLP dans GF(2^64) → 32 bits → CASSABLE
-  V2 : Corps GF(p)   → p ≈ 2^256    → DLP dans GF(p^4) ≈ 2^1024 → ~80 bits (NFS)
-  Note Schnorr : t de 640 bits (Σ-protocole à masquage statistique)
-  car ord(G) est inconnu dans GL(4,GF(p)) → pas de réduction modulaire
-
-  V1 : G circulante (structure spéciale) → EXPLOITABLE
-  V2 : G dérivée de SHA-256(seed public) → pseudoaléatoire, vérifiable
-
-PARAMÈTRES DU SYSTÈME
-──────────────────────
-  Taille matrice     : {N}×{N}
-  Corps              : GF(p) avec p de 256 bits (premier secp256k1)
-  Clé privée         : entier 256 bits (mod Q_ORDER)
-  Sécurité DLP       : GF(p^{N}) ≈ GF(2^{256*N}) — NFS sous-exponentiel
-                       N=4 → 1024 bits → ~80 bits effectifs (éducatif)
-                       N=8 → 2048 bits → ~112 bits effectifs (production)
-  Seed G             : {SEED_PUBLIC.decode()}
-
-PROTOCOLE DE CHIFFREMENT (El-Gamal hybride)
-────────────────────────────────────────────
-  1. r = aléatoire 256 bits (clé éphémère — usage unique)
-  2. C_pub = G^r
-  3. S = K_enc_dest^r = G^(k_dest × r)    ← secret partagé
-  4. key_enc = HMAC(S, "chiffrement-v2")
-     key_mac = HMAC(S, "authentification-v2")
-  5. nonce = 16 octets aléatoires
-  6. ct = message XOR CTR(key_enc, nonce)
-  7. mac = HMAC(key_mac, C_pub || nonce || ct)
-
-SIGNATURE SCHNORR (Zero-Knowledge Proof)
-─────────────────────────────────────────
-  t = aléatoire,   R = G^t
-  e = SHA256(R || données) mod Q
-  s = t + k_sign × e               ← pas de mod (ord(G) inconnu)
-  t est choisi sur 640 bits (Σ-protocole à masquage statistique)
-  → k×e (~512 bits) est noyé dans t (~640 bits), marge 2^-128
-
-  Vérification : G^s == R × K_sign^e
-  Preuve : G^(t+ke) = G^t × (G^k)^e = R × K^e ✓
-
-POURQUOI C'EST UN ZERO-KNOWLEDGE PROOF ?
-─────────────────────────────────────────
-  Alice prouve à Bob qu'elle connaît k_sign SANS le lui révéler.
-  Bob ne peut pas reconstruire k_sign depuis (R, e, s).
-  Le nonce t (640 bits) masque k×e (512 bits) avec marge 2^-128.
-  Mais Bob peut VÉRIFIER que seule quelqu'un connaissant k_sign
-  peut produire un (R, s) qui satisfait G^s == R × K^e.
-"""
-        txt = scrolledtext.ScrolledText(parent, font=('Courier', 9), wrap='word')
-        txt.pack(fill='both', expand=True, padx=8, pady=8)
-        txt.insert('1.0', info)
-        txt.config(state='disabled')
-
-    # ──────────────────────────────────────────────────────────────
-    #  Logique des boutons
-    # ──────────────────────────────────────────────────────────────
+    # ── Logique metier ───────────────────────────────────────────
 
     def _generer_cles(self):
-        """Génère une nouvelle paire de clés et l'affiche."""
         try:
             self.mes_cles = generer_paire_cles()
             pub_json, priv_json = cles_vers_json(self.mes_cles)
-
             self._set_text(self.txt_pub, pub_json)
             self._set_text(self.txt_priv, priv_json)
-
             messagebox.showinfo(
-                "Clés générées",
-                "Nouvelle paire de clés créée avec succès.\n\n"
-                "IMPORTANT : Sauvegardez votre clé PRIVÉE en lieu sûr.\n"
-                "Partagez uniquement votre clé PUBLIQUE."
-            )
+                "Cles generees",
+                "Nouvelle paire de cles creee avec succes.\n\n"
+                "Sauvegardez votre cle PRIVEE en lieu sur.\n"
+                "Partagez uniquement votre cle PUBLIQUE.")
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
 
     def _charger_mes_cles(self):
-        """Charge la clé privée depuis un fichier JSON."""
         chemin = filedialog.askopenfilename(
-            title="Charger ma clé privée",
-            filetypes=[("JSON", "*.json"), ("Tous", "*.*")]
-        )
+            title="Charger ma cle privee",
+            filetypes=[("JSON", "*.json"), ("Tous", "*.*")])
         if not chemin:
             return
         try:
             with open(chemin, 'r') as f:
                 js = f.read()
             k_enc, k_sign = json_vers_cle_priv(js)
-            K_enc  = mat_pow(G_GEN, k_enc)
+            K_enc = mat_pow(G_GEN, k_enc)
             K_sign = mat_pow(G_GEN, k_sign)
             self.mes_cles = {
                 'k_enc': k_enc, 'k_sign': k_sign,
@@ -1132,165 +1106,124 @@ POURQUOI C'EST UN ZERO-KNOWLEDGE PROOF ?
             pub_json, priv_json = cles_vers_json(self.mes_cles)
             self._set_text(self.txt_pub, pub_json)
             self._set_text(self.txt_priv, js)
-            messagebox.showinfo("Clés chargées", "Clés chargées avec succès.")
+            messagebox.showinfo("OK", "Cles chargees avec succes.")
         except Exception as e:
             messagebox.showerror("Erreur de chargement", str(e))
 
     def _chiffrer(self):
-        """Chiffre le message saisi pour le destinataire."""
         if not self.mes_cles:
             messagebox.showwarning(
-                "Clés manquantes",
-                "Générez ou chargez d'abord vos clés (onglet 'Mes Clés')."
-            )
+                "Cles manquantes",
+                "Generez ou chargez vos cles dans l'onglet 'Mes Cles'.")
             return
         try:
             dest_pub_js = self.txt_dest_pub.get('1.0', 'end').strip()
-            message     = self.txt_clair.get('1.0', 'end').strip()
-
+            message = self.txt_clair.get('1.0', 'end').strip()
             if not dest_pub_js:
-                messagebox.showwarning("Champ vide", "Entrez la clé publique du destinataire.")
+                messagebox.showwarning("Champ vide",
+                                       "Entrez la cle publique du destinataire.")
                 return
             if not message:
-                messagebox.showwarning("Champ vide", "Entrez un message à chiffrer.")
+                messagebox.showwarning("Champ vide", "Entrez un message a chiffrer.")
                 return
-
             K_enc_dest, _ = json_vers_cle_pub(dest_pub_js)
             paquet = chiffrer(message, K_enc_dest, self.mes_cles['k_sign'])
             self._set_text(self.txt_chiffre, paquet_vers_json(paquet))
-
         except json.JSONDecodeError:
-            messagebox.showerror("JSON invalide", "La clé publique du destinataire est mal formée.")
+            messagebox.showerror("JSON invalide",
+                                 "La cle publique du destinataire est mal formee.")
         except Exception as e:
             messagebox.showerror("Erreur de chiffrement", str(e))
 
     def _dechiffrer(self):
-        """Déchiffre un paquet reçu en utilisant la clé privée saisie manuellement."""
         try:
             cle_priv_js = self.txt_cle_priv_dec.get('1.0', 'end').strip()
             emit_pub_js = self.txt_emit_pub.get('1.0', 'end').strip()
-            paquet_js   = self.txt_recu.get('1.0', 'end').strip()
-
+            paquet_js = self.txt_recu.get('1.0', 'end').strip()
             if not cle_priv_js:
-                messagebox.showwarning(
-                    "Clé privée manquante",
-                    "Entrez votre clé privée JSON dans le premier champ."
-                )
+                messagebox.showwarning("Manquant", "Entrez votre cle privee.")
                 return
             if not emit_pub_js:
-                messagebox.showwarning("Champ vide", "Entrez la clé publique de l'émetteur.")
+                messagebox.showwarning("Manquant",
+                                       "Entrez la cle publique de l'emetteur.")
                 return
             if not paquet_js:
-                messagebox.showwarning("Champ vide", "Entrez le message chiffré reçu.")
+                messagebox.showwarning("Manquant", "Entrez le message chiffre.")
                 return
-
-            # Lire la clé privée saisie — seul k_enc est nécessaire pour déchiffrer
             k_enc, _ = json_vers_cle_priv(cle_priv_js)
-
             _, K_sign_emit = json_vers_cle_pub(emit_pub_js)
             paquet = json_vers_paquet(paquet_js)
-
             plaintext, sig_valide = dechiffrer(paquet, k_enc, K_sign_emit)
-
             self._set_text(self.txt_dechiffre, plaintext)
-
             if sig_valide:
-                self.lbl_sig.config(
-                    text="Signature VALIDE — message authentique",
-                    foreground='green'
-                )
+                self.lbl_sig.config(text="Signature VALIDE — message authentique",
+                                    fg=self.GREEN)
             else:
-                self.lbl_sig.config(
-                    text="Signature INVALIDE — émetteur non vérifié",
-                    foreground='orange'
-                )
-
+                self.lbl_sig.config(text="Signature INVALIDE — emetteur non verifie",
+                                    fg=self.ORANGE)
         except ValueError as e:
-            messagebox.showerror("Échec de déchiffrement", str(e))
-            self.lbl_sig.config(text="", foreground='black')
+            messagebox.showerror("Echec de dechiffrement", str(e))
+            self.lbl_sig.config(text="", fg=self.TXT)
         except json.JSONDecodeError:
-            messagebox.showerror(
-                "JSON invalide",
-                "Un des champs JSON est mal formé.\n"
-                "Vérifiez : clé privée, clé publique émetteur, message chiffré."
-            )
+            messagebox.showerror("JSON invalide",
+                                 "Un des champs JSON est mal forme.\n"
+                                 "Verifiez : cle privee, cle publique, message chiffre.")
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
 
-    # ──────────────────────────────────────────────────────────────
-    #  Utilitaires interface
-    # ──────────────────────────────────────────────────────────────
-
-    def _set_text(self, widget, texte: str):
-        """Remplace le contenu d'un widget texte."""
-        widget.config(state='normal')
-        widget.delete('1.0', 'end')
-        widget.insert('1.0', texte)
+    # ── Utilitaires ──────────────────────────────────────────────
 
     def _copier(self, widget):
-        """Copie le contenu d'un widget dans le presse-papiers."""
         texte = widget.get('1.0', 'end').strip()
         self.root.clipboard_clear()
         self.root.clipboard_append(texte)
-        messagebox.showinfo("Copié", "Contenu copié dans le presse-papiers.")
+        messagebox.showinfo("Copie", "Contenu copie dans le presse-papiers.")
 
     def _charger_dans(self, widget):
-        """Charge le contenu d'un fichier texte dans un widget."""
         chemin = filedialog.askopenfilename(
-            filetypes=[("JSON", "*.json"), ("Texte", "*.txt"), ("Tous", "*.*")]
-        )
+            filetypes=[("JSON", "*.json"), ("Texte", "*.txt"), ("Tous", "*.*")])
         if chemin:
             with open(chemin, 'r') as f:
                 self._set_text(widget, f.read())
 
     def _sauvegarder_pub(self):
-        """Sauvegarde la clé publique dans un fichier JSON."""
         if not self.mes_cles:
-            messagebox.showwarning("Pas de clés", "Générez d'abord une paire de clés.")
+            messagebox.showwarning("Pas de cles", "Generez d'abord vos cles.")
             return
         chemin = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON", "*.json")],
-            title="Sauvegarder la clé publique"
-        )
+            defaultextension=".json", filetypes=[("JSON", "*.json")],
+            title="Sauvegarder cle publique")
         if chemin:
             with open(chemin, 'w') as f:
                 f.write(self.txt_pub.get('1.0', 'end').strip())
-            messagebox.showinfo("Sauvegardé", f"Clé publique sauvegardée :\n{chemin}")
+            messagebox.showinfo("OK", f"Cle publique sauvegardee :\n{chemin}")
 
     def _sauvegarder_priv(self):
-        """Sauvegarde la clé privée dans un fichier JSON."""
         if not self.mes_cles:
-            messagebox.showwarning("Pas de clés", "Générez d'abord une paire de clés.")
+            messagebox.showwarning("Pas de cles", "Generez d'abord vos cles.")
             return
         chemin = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON", "*.json")],
-            title="Sauvegarder la clé privée (GARDER SECRET)"
-        )
+            defaultextension=".json", filetypes=[("JSON", "*.json")],
+            title="Sauvegarder cle privee")
         if chemin:
             with open(chemin, 'w') as f:
                 f.write(self.txt_priv.get('1.0', 'end').strip())
-            messagebox.showinfo(
-                "Sauvegardé",
-                f"Clé privée sauvegardée :\n{chemin}\n\n"
-                "AVERTISSEMENT : Ne partagez JAMAIS ce fichier."
-            )
+            messagebox.showinfo("OK",
+                                f"Cle privee sauvegardee :\n{chemin}\n\n"
+                                "Ne partagez JAMAIS ce fichier.")
 
     def _sauvegarder_texte(self, widget):
-        """Sauvegarde le contenu d'un widget dans un fichier."""
         chemin = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("JSON", "*.json"), ("Texte", "*.txt")]
-        )
+            filetypes=[("JSON", "*.json"), ("Texte", "*.txt")])
         if chemin:
             with open(chemin, 'w') as f:
                 f.write(widget.get('1.0', 'end').strip())
-            messagebox.showinfo("Sauvegardé", f"Fichier sauvegardé :\n{chemin}")
+            messagebox.showinfo("OK", f"Fichier sauvegarde :\n{chemin}")
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  POINT D'ENTRÉE
+#  POINT D'ENTREE
 # ═══════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
