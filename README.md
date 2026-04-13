@@ -92,7 +92,7 @@ e = SHA256(R || donnees)       s = t + k_sign * e
 ### Lancement
 
 ```bash
-python3 chiffrement.py
+python3 algo.py
 ```
 
 L'application s'ouvre avec une interface dark theme et 3 onglets :
@@ -141,7 +141,7 @@ Tout le code cryptographique est ecrit a la main, sans appel a des bibliotheques
 ## Structure du code
 
 ```
-chiffrement.py
+algo.py
   |
   |-- Partie 1 : Arithmetique GF(p)           gf_add, gf_mul, gf_inv
   |-- Partie 2 : Matrices sur GF(p)           mat_mul, mat_inv, mat_pow
